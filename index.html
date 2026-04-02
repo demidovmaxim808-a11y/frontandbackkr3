@@ -2,75 +2,51 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-
-  <!-- Web App Manifest -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мои заметки | PWA</title>
   <link rel="manifest" href="/manifest.json">
-
-  <!-- Для Android -->
-  <meta name="mobile-web-app-capable" content="yes">
-
-  <!-- Цвет темы для браузера -->
   <meta name="theme-color" content="#4285f4">
-
-  <!-- Для iOS (иконка на домашний экран) -->
-  <link rel="apple-touch-icon" href="/icons/icon-152x152.png">
-
-  <!-- Для iOS (статус бар) -->
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-
-  <title>Мои заметки (PWA)</title>
+  <link rel="apple-touch-icon" href="/icons/favicon-128x128.png">
   <link rel="stylesheet" href="https://unpkg.com/chota@latest">
-  <link rel="icon" href="icons/favicon.ico" sizes="16x16" type="image/ico">
+  <link rel="icon" href="icons/favicon.ico">
   
   <style>
-    body {
-      padding: 1rem;
-      max-width: 800px;
-      margin: 0 auto;
-    }
-    #notes-list {
-      margin-top: 1rem;
-      list-style: none;
-      padding: 0;
-    }
-    #notes-list li {
-      background: #f5f5f5;
-      margin: 0.5rem 0;
-      padding: 0.75rem;
-      border-radius: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .delete-btn {
-      background: #ff6b6b;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      padding: 0.25rem 0.75rem;
-      cursor: pointer;
-    }
-    .delete-btn:hover {
-      background: #ff4757;
-    }
-    h1 {
-      font-size: 1.8rem;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { padding: 1rem; max-width: 800px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; }
+    @media (prefers-color-scheme: dark) { body { background: #1c1c1e; color: #fff; } #notes-list li { background: #2c2c2e; } }
+    header { text-align: center; margin-bottom: 1.5rem; }
+    h1 { font-size: 1.8rem; }
+    .tabs { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem; }
+    .tab { padding: 0.5rem 1.5rem; border: none; background: #e0e0e0; border-radius: 25px; cursor: pointer; }
+    .tab.active { background: #4285f4; color: white; }
+    #notes-list { list-style: none; padding: 0; margin-top: 1rem; }
+    #notes-list li { background: white; margin: 0.5rem 0; padding: 0.75rem 1rem; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .delete-btn { background: #ff3b30; color: white; border: none; border-radius: 8px; padding: 0.3rem 0.8rem; cursor: pointer; }
+    .notification-toast { position: fixed; top: 20px; right: 20px; background: #4285f4; color: white; padding: 0.75rem 1rem; border-radius: 12px; z-index: 1000; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    .push-buttons { display: flex; gap: 1rem; justify-content: center; margin-top: 1rem; }
+    .btn-success { background: #34c759; color: white; border: none; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; }
+    .btn-danger { background: #ff3b30; color: white; border: none; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; }
   </style>
 </head>
 <body>
-  <h1>📝 Мои заметки</h1>
-  <p>Приложение работает офлайн и может быть установлено на устройство.</p>
 
-  <form id="note-form" class="row">
-    <input class="col-9" type="text" id="note-input" placeholder="Введите заметку..." required>
-    <button class="col-3" type="submit">➕ Добавить</button>
-  </form>
+  <header>
+    <h1>📝 Мои заметки</h1>
+    <div class="tabs">
+      <button id="home-btn" class="tab active">🏠 Главная</button>
+      <button id="about-btn" class="tab">ℹ️ О приложении</button>
+    </div>
+  </header>
 
-  <ul id="notes-list"></ul>
+  <main id="app-content"></main>
 
+  <div class="push-buttons">
+    <button id="enable-push" class="btn-success">🔔 Включить уведомления</button>
+    <button id="disable-push" class="btn-danger" style="display:none;">🔕 Отключить уведомления</button>
+  </div>
+
+  <script src="/node_modules/socket.io-client/dist/socket.io.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
