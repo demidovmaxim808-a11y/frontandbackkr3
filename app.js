@@ -1,15 +1,13 @@
-let socket = null;
-let currentPage = 'home';
-
-// ВСТАВЬ СВОЙ VAPID ПУБЛИЧНЫЙ КЛЮЧ СЮДА
-const VAPID_PUBLIC_KEY = 'BDwHb4ILBEx7NLkfdYXO7l_cO2bptbpexLUYJkosOqMa13zHK1yG5UE-PgzSuNjOHjX3Eh0SGvgybUSrbb2H9FQ';
-
+const contentDiv = document.getElementById('app-content');
 const homeBtn = document.getElementById('home-btn');
 const aboutBtn = document.getElementById('about-btn');
-const contentDiv = document.getElementById('app-content');
-const enablePushBtn = document.getElementById('enable-push');
-const disablePushBtn = document.getElementById('disable-push');
-const statusBadge = document.getElementById('status-badge');
+const offlineBadge = document.getElementById('offline-badge');
+const installBadge = document.getElementById('install-badge');
+
+let deferredPrompt;
+let socket = null;
+
+const VAPID_PUBLIC_KEY = 'BOeK5brFMJlQFjbFpyvTjoKsDWGz63b-4Z_oD63dPyaP8GMY3QrPfGLKYocEurT9d-XwBeqka_tMV1j1yNnZcdQ';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -22,93 +20,8 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-function showToast(message, isError = false) {
-  const toast = document.createElement('div');
-  toast.textContent = message;
-  toast.style.cssText = `
-    position: fixed; top: 20px; right: 20px; background: ${isError ? '#ff3b30' : '#4285f4'};
-    color: white; padding: 0.75rem 1rem; border-radius: 12px; z-index: 1000;
-    animation: slideIn 0.3s ease;
-  `;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
-
-function loadNotes() {
-  const notes = JSON.parse(localStorage.getItem('notes') || '[]');
-  const list = document.getElementById('notes-list');
-  if (!list) return;
-  
-  if (notes.length === 0) {
-    list.innerHTML = '<li style="text-align:center; color:#999;">📭 Нет заметок. Добавьте первую!</li>';
-    return;
-  }
-  
-  list.innerHTML = notes.map((note, index) => {
-    const text = typeof note === 'string' ? note : note.text;
-    return `
-      <li>
-        <span>${escapeHtml(text)}</span>
-        <button class="delete-btn" data-index="${index}">🗑 Удалить</button>
-      </li>
-    `;
-  }).join('');
-  
-  document.querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', () => deleteNote(parseInt(btn.dataset.index)));
-  });
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/[&<>]/g, function(m) {
-    if (m === '&') return '&amp;';
-    if (m === '<') return '&lt;';
-    if (m === '>') return '&gt;';
-    return m;
-  });
-}
-
-function addNote(text) {
-  const notes = JSON.parse(localStorage.getItem('notes') || '[]');
-  notes.push({ id: Date.now(), text: text, datetime: new Date().toLocaleString() });
-  localStorage.setItem('notes', JSON.stringify(notes));
-  loadNotes();
-  
-  if (socket && socket.connected) {
-    socket.emit('newTask', { text: text, id: Date.now() });
-    console.log('📤 Отправлено через WebSocket:', text);
-  }
-}
-
-function deleteNote(index) {
-  const notes = JSON.parse(localStorage.getItem('notes') || '[]');
-  notes.splice(index, 1);
-  localStorage.setItem('notes', JSON.stringify(notes));
-  loadNotes();
-}
-
-function initNotes() {
-  loadNotes();
-  const form = document.getElementById('note-form');
-  const input = document.getElementById('note-input');
-  if (form) {
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (text) {
-        addNote(text);
-        input.value = '';
-      }
-    });
-  }
-}
-
 async function subscribeToPush() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    showToast('❌ Push не поддерживается', true);
-    return;
-  }
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -117,135 +30,285 @@ async function subscribeToPush() {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
     });
     
-    const response = await fetch('http://localhost:3001/subscribe', {
+    await fetch('/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subscription)
     });
     
-    if (response.ok) {
-      showToast('✅ Push-уведомления включены');
-      enablePushBtn.style.display = 'none';
-      disablePushBtn.style.display = 'inline-block';
-    }
+    console.log('Подписка на push отправлена');
   } catch (err) {
-    console.error(err);
-    showToast('❌ Ошибка: ' + err.message, true);
+    console.error('Ошибка подписки:', err);
   }
 }
 
 async function unsubscribeFromPush() {
-  if (!('serviceWorker' in navigator)) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   
-  try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription();
+  
+  if (subscription) {
+    await fetch('/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: subscription.endpoint })
+    });
     
-    if (subscription) {
-      await fetch('http://localhost:3001/unsubscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint: subscription.endpoint })
-      });
-      await subscription.unsubscribe();
-      showToast('🔕 Push-уведомления отключены');
-      enablePushBtn.style.display = 'inline-block';
-      disablePushBtn.style.display = 'none';
-    }
-  } catch (err) {
-    console.error(err);
+    await subscription.unsubscribe();
+    console.log('Отписка выполнена');
   }
 }
 
+function initWebSocket() {
+  if (!navigator.onLine) return null;
+  
+  try {
+    const s = io();
+    
+    s.on('connect', () => console.log('WebSocket подключен'));
+    
+    s.on('taskAdded', (task) => {
+      console.log('Новая задача:', task);
+      showToast(`✨ ${task.text}`);
+      if (document.getElementById('notes-list')) renderNotesFromStorage();
+    });
+    
+    return s;
+  } catch (err) {
+    console.error('WebSocket error:', err);
+    return null;
+  }
+}
+
+function showToast(message) {
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed; bottom: 20px; right: 20px; background: #28a745;
+    color: white; padding: 12px 20px; border-radius: 8px; z-index: 1000;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+function setActiveButton(activeId) {
+  [homeBtn, aboutBtn].forEach(btn => btn.classList.remove('active'));
+  document.getElementById(activeId).classList.add('active');
+}
+
 async function loadContent(page) {
-  currentPage = page;
   try {
     const response = await fetch(`/content/${page}.html`);
     const html = await response.text();
     contentDiv.innerHTML = html;
-    if (page === 'home') {
-      initNotes();
-    }
+    if (page === 'home') initNotes();
   } catch (err) {
-    contentDiv.innerHTML = '<p style="color:red; text-align:center;">❌ Ошибка загрузки</p>';
+    contentDiv.innerHTML = '<p style="color: red; text-align: center;">Ошибка загрузки</p>';
   }
 }
 
-function setActiveButton(activeId) {
-  if (homeBtn && aboutBtn) {
-    [homeBtn, aboutBtn].forEach(btn => btn.classList.remove('active'));
-    document.getElementById(activeId).classList.add('active');
-  }
+function renderNotesFromStorage() {
+  const notes = JSON.parse(localStorage.getItem('notes') || '[]');
+  renderNotes(notes);
 }
 
-function initSocket() {
-  if (typeof io === 'undefined') {
-    console.error('❌ Socket.IO не загружен!');
-    showToast('❌ Socket.IO не загружен. Проверьте интернет', true);
+function saveNotes(notes) {
+  localStorage.setItem('notes', JSON.stringify(notes));
+  renderNotes(notes);
+}
+
+function renderNotes(notes) {
+  const list = document.getElementById('notes-list');
+  if (!list) return;
+  
+  if (notes.length === 0) {
+    list.innerHTML = '<li style="text-align: center; color: #6c757d;">Нет заметок</li>';
     return;
   }
-  
-  socket = io('http://localhost:3001');
-  
-  socket.on('connect', () => {
-    console.log('🔌 WebSocket подключён');
-    if (statusBadge) {
-      statusBadge.innerHTML = '✅ Онлайн • WebSocket ✓';
-      statusBadge.style.background = '#34c759';
+
+  list.innerHTML = notes.map((note, index) => {
+    let reminderInfo = '';
+    if (note.reminder) {
+      const date = new Date(note.reminder);
+      reminderInfo = `<br><small style="color: #e67e22;">⏰ ${date.toLocaleString()}</small>`;
     }
-  });
-  
-  socket.on('disconnect', () => {
-    console.log('🔌 WebSocket отключён');
-    if (statusBadge) {
-      statusBadge.innerHTML = '⚠️ WebSocket отключён';
-      statusBadge.style.background = '#ff9500';
-    }
-  });
-  
-  socket.on('taskAdded', (task) => {
-    console.log('📨 Получено:', task);
-    showToast(`📝 Новая заметка: ${task.text}`);
-    if (currentPage === 'home') {
-      loadNotes();
-    }
-  });
+    return `
+      <li class="card" style="margin-bottom: 0.5rem; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between;">
+          <span style="flex: 1;">${escapeHtml(note.text)}${reminderInfo}</span>
+          <div>
+            <button onclick="window.deleteNote(${index})" style="background: #dc3545; color: white; border: none; border-radius: 4px; padding: 4px 8px;">🗑</button>
+          </div>
+        </div>
+      </li>
+    `;
+  }).join('');
 }
 
-async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) {
-    console.warn('Service Worker не поддерживается');
-    return false;
-  }
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+window.deleteNote = function(index) {
+  const notes = JSON.parse(localStorage.getItem('notes') || '[]');
+  const deletedNote = notes[index];
+  notes.splice(index, 1);
+  saveNotes(notes);
   
-  try {
-    const registration = await navigator.serviceWorker.register('/sw.js');
-    console.log('✅ Service Worker зарегистрирован');
-    
-    const subscription = await registration.pushManager.getSubscription();
-    if (subscription && enablePushBtn && disablePushBtn) {
-      enablePushBtn.style.display = 'none';
-      disablePushBtn.style.display = 'inline-block';
-    }
-    
-    return true;
-  } catch (err) {
-    console.error('❌ Ошибка SW:', err);
-    return false;
+  if (deletedNote?.id && deletedNote?.reminder && socket?.connected) {
+    socket.emit('cancelReminder', { id: deletedNote.id });
+  }
+};
+
+function addNote(text) {
+  const notes = JSON.parse(localStorage.getItem('notes') || '[]');
+  const newNote = { id: Date.now(), text: text, reminder: null };
+  notes.push(newNote);
+  saveNotes(notes);
+  
+  if (socket?.connected) {
+    socket.emit('newTask', { text: text, id: newNote.id });
   }
 }
 
-async function init() {
-  console.log('🚀 Инициализация...');
-  await registerServiceWorker();
-  initSocket();
+function addReminder(text, reminderTime) {
+  const notes = JSON.parse(localStorage.getItem('notes') || '[]');
+  const newNote = { id: Date.now(), text: text, reminder: reminderTime };
+  notes.push(newNote);
+  saveNotes(notes);
   
-  if (homeBtn) homeBtn.onclick = () => { setActiveButton('home-btn'); loadContent('home'); };
-  if (aboutBtn) aboutBtn.onclick = () => { setActiveButton('about-btn'); loadContent('about'); };
-  if (enablePushBtn) enablePushBtn.onclick = subscribeToPush;
-  if (disablePushBtn) disablePushBtn.onclick = unsubscribeFromPush;
-  
-  await loadContent('home');
+  if (socket?.connected) {
+    socket.emit('newReminder', { id: newNote.id, text: text, reminderTime: reminderTime });
+  }
 }
 
-init();
+function initNotes() {
+  const noteForm = document.getElementById('note-form');
+  const noteInput = document.getElementById('note-input');
+  const reminderForm = document.getElementById('reminder-form');
+  const reminderText = document.getElementById('reminder-text');
+  const reminderTime = document.getElementById('reminder-time');
+  
+  renderNotesFromStorage();
+  
+  if (noteForm) {
+    noteForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = noteInput.value.trim();
+      if (text) {
+        addNote(text);
+        noteInput.value = '';
+      }
+    });
+  }
+  
+  if (reminderForm) {
+    reminderForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = reminderText.value.trim();
+      const time = reminderTime.value;
+      
+      if (text && time) {
+        const timestamp = new Date(time).getTime();
+        if (timestamp <= Date.now()) {
+          showToast('⚠️ Время должно быть в будущем');
+          return;
+        }
+        addReminder(text, timestamp);
+        reminderText.value = '';
+        reminderTime.value = '';
+        showToast(`🔔 Напоминание на ${new Date(timestamp).toLocaleString()}`);
+      }
+    });
+  }
+}
+
+function updateNetworkStatus() {
+  if (offlineBadge) offlineBadge.style.display = navigator.onLine ? 'none' : 'block';
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBadge.style.display = 'block';
+});
+
+installBadge.addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  installBadge.style.display = 'none';
+  deferredPrompt = null;
+});
+
+window.addEventListener('online', () => {
+  updateNetworkStatus();
+  if (!socket) socket = initWebSocket();
+});
+
+window.addEventListener('offline', () => {
+  updateNetworkStatus();
+  if (socket) { socket.disconnect(); socket = null; }
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('SW registered');
+      
+      const enableBtn = document.getElementById('enable-push');
+      const disableBtn = document.getElementById('disable-push');
+      
+      if (enableBtn && disableBtn) {
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+          enableBtn.style.display = 'none';
+          disableBtn.style.display = 'inline-block';
+        }
+        
+        enableBtn.addEventListener('click', async () => {
+          if (Notification.permission === 'denied') {
+            alert('Разрешите уведомления в настройках');
+            return;
+          }
+          if (Notification.permission === 'default') {
+            const perm = await Notification.requestPermission();
+            if (perm !== 'granted') {
+              alert('Нужно разрешить уведомления');
+              return;
+            }
+          }
+          await subscribeToPush();
+          enableBtn.style.display = 'none';
+          disableBtn.style.display = 'inline-block';
+        });
+        
+        disableBtn.addEventListener('click', async () => {
+          await unsubscribeFromPush();
+          disableBtn.style.display = 'none';
+          enableBtn.style.display = 'inline-block';
+        });
+      }
+    } catch (err) {
+      console.error('SW error:', err);
+    }
+  });
+}
+
+homeBtn.addEventListener('click', () => {
+  setActiveButton('home-btn');
+  loadContent('home');
+});
+
+aboutBtn.addEventListener('click', () => {
+  setActiveButton('about-btn');
+  loadContent('about');
+});
+
+socket = initWebSocket();
+updateNetworkStatus();
+loadContent('home');

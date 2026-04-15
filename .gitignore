@@ -1,5 +1,78 @@
+# Зависимости Node.js
 node_modules/
-certs/
-*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Сертификаты HTTPS (важно! не пушите их в репозиторий)
+*.pem
+*.key
+*.crt
+*.cer
+*.pfx
+
+# Локальные сервера и конфиги
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 .DS_Store
 Thumbs.db
+
+# Логи сервера
+*.log
+logs/
+_logs/
+
+# Временные файлы
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# Сборки и дистрибутивы (если есть)
+dist/
+build/
+out/
+*.zip
+*.tar.gz
+
+# Конфиги окружения
+.env
+.env.local
+.env.*.local
+
+# Файлы отчётов
+coverage/
+.nyc_output/
+
+# Редакторы и IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# OS метаданные
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.bak
+
+# Докер (если используете)
+docker-compose.override.yml
+.docker/
+
+# Ключи
+keys.txt

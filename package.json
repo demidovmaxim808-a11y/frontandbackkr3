@@ -1,32 +1,18 @@
 {
-  "name": "notes-pwa",
-  "version": "1.0.0",
-  "description": "PWA заметки с WebSocket и Push-уведомлениями",
+  "name": "todo-app-pwa",
+  "version": "2.0.0",
+  "description": "PWA приложение для заметок с WebSocket и Push уведомлениями",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "https": "http-server --ssl --cert certs/localhost.pem --key certs/localhost-key.pem -p 3000"
+    "dev": "nodemon server.js"
   },
   "dependencies": {
-    "body-parser": "^1.20.4",
-    "cors": "^2.8.6",
-    "express": "^4.22.1",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
-    "web-push": "^3.6.7"
+    "express": "^4.18.2",
+    "socket.io": "^4.5.4",
+    "web-push": "^3.6.6",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5"
   },
-  "devDependencies": {
-    "http-server": "^14.1.1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/demidovmaxim808-a11y/frontandbackkr3.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/demidovmaxim808-a11y/frontandbackkr3/issues"
-  },
-  "homepage": "https://github.com/demidovmaxim808-a11y/frontandbackkr3#readme"
+  "https": "http-server --ssl --cert localhost.pem --key localhost-key.pem -p 3001"
 }
